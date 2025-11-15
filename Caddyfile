@@ -1,0 +1,7 @@
+app.cardhubtw.com {
+    reverse_proxy frontend:80
+}
+
+api.cardhubtw.com {
+    reverse_proxy backend:3001
+}

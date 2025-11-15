@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  frontend:
+    build: ./front
+    container_name: frontend
+    depends_on:
+      - backend
+    networks:
+      - webnet
+
+  backend:
+    build: ./back
+    container_name: backend
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NODE_ENV: production
+    depends_on:
+      - redis
+    networks:
+      - webnet
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    volumes:
+      - redisdata:/data
+    networks:
+      - webnet
+
+  reverse-proxy:
+    image: caddy:latest
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - webnet
+
+networks:
+  webnet:
+
+volumes:
+  redisdata:
+  caddydata:
+  caddyconfig:
