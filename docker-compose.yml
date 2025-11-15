@@ -14,14 +14,6 @@ services:
       timeout: 3s
       retries: 5
 
-  frontend:
-    build: ./front
-    container_name: frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
-      
   backend:
     build: ./back
     ports:

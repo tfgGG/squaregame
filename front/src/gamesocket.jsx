@@ -3,7 +3,7 @@ import { Users, Trophy, Square, Circle, Wifi, WifiOff, Plus, LogIn, Copy, Check 
 import io from 'socket.io-client';
 
 const GRID_SIZE = 8;
-const MAX_TURNS = 10;
+const MAX_TURNS = 5;
 const PLAYERS = ['Player 1', 'Player 2', 'Player 3'];
 const PLAYER_COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500'];
 const PLAYER_BORDERS = ['border-blue-500', 'border-green-500', 'border-purple-500'];
@@ -210,6 +210,23 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
     return myPlayerIndex !== null && gameState.currentPlayer === myPlayerIndex;
   };
 
+  const getCellClasses = (cell) => {
+    if (!cell) {
+      return 'bg-slate-700 border-white hover:bg-slate-600';
+    }
+    
+    // Explicitly list all possible classes so Tailwind JIT can detect them
+    const player = cell.player;
+    if (player === 0) {
+      return 'bg-blue-500 text-white border-blue-500';
+    } else if (player === 1) {
+      return 'bg-green-500 text-white border-green-500';
+    } else if (player === 2) {
+      return 'bg-purple-500 text-white border-purple-500';
+    }
+    return 'bg-slate-400 text-slate-300 hover:bg-slate-600';
+  };
+
   const isCellInSelection = (row, col) => {
     if (!areaStart) return false;
     if (!areaEnd) return row === areaStart.row && col === areaStart.col;
@@ -239,8 +256,8 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-6 ">
+      <div className='min-w-screen'>
         {/* Notifications */}
         <div className="fixed top-4 right-4 z-50 space-y-2">
           {notifications.map(notif => (
@@ -261,7 +278,7 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
         {/* Header with Room ID */}
         <div className="text-center mb-6">
           <h1 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
-            <Square className="w-10 h-10" />
+          
             Grid Square Number Game
             {connected ? (
               <Wifi className="w-6 h-6 text-green-400" />
@@ -353,7 +370,7 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
                     className={`w-10 h-10 rounded ${
                       gameState.selectedNumber === num
                         ? `${PLAYER_COLORS[gameState.currentPlayer]} text-white`
-                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                        : 'bg-slate-400 text-slate-300 hover:bg-slate-600'
                     } font-bold transition-colors`}
                     disabled={gameState.gameOver || gameState.hasPlaced || !isMyTurn()}
                   >
@@ -426,11 +443,9 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
                       key={colIdx}
                       onClick={() => handleCellClick(rowIdx, colIdx)}
                       disabled={gameState.gameOver || (cell !== null && !selectingArea) || !isMyTurn()}
-                      className={`w-14 h-14 border-2 font-bold text-lg transition-all ${
-                        cell
-                          ? `${PLAYER_COLORS[cell.player]} text-white ${PLAYER_BORDERS[cell.player]}`
-                          : 'bg-slate-700 border-slate-600 hover:bg-slate-600'
-                      } ${isSelected ? 'ring-4 ring-yellow-400' : ''} ${
+                      className={`w-14 h-14 border-2 font-bold text-lg transition-all ${getCellClasses(cell)} ${
+                        isSelected ? 'ring-4 ring-yellow-400' : ''
+                      } ${
                         isCircled ? 'opacity-60' : ''
                       } disabled:cursor-not-allowed`}
                     >
