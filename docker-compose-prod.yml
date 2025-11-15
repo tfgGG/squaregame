@@ -4,6 +4,8 @@ services:
   frontend:
     build: ./front
     container_name: frontend
+    expose:
+      - "80"  # Add the port your frontend runs on
     depends_on:
       - backend
     networks:
@@ -12,6 +14,8 @@ services:
   backend:
     build: ./back
     container_name: backend
+    expose:
+      - "3001"  # Add the port your backend runs on
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
