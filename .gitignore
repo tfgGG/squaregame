@@ -1,0 +1,4 @@
+/back/node_modules/
+/front/node_modules/
+/front/.git_backup/
+/back/.git_backup/
