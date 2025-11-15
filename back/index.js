@@ -35,7 +35,7 @@ redisClient.on('connect', () => console.log('Redis Client Connected'));
 })();
 
 const GRID_SIZE = 8;
-const MAX_TURNS = 10;
+const MAX_TURNS = 8;
 
 // Generate 6-digit room ID
 function generateRoomId() {
@@ -423,9 +423,16 @@ io.on('connection', async (socket) => {
     });
 
     if (state.gameOver) {
-      const winnerIndex = state.scores.indexOf(Math.max(...state.scores));
+      const maxScore = Math.max(...state.scores);
+      // Find all players with the max score (handle ties)
+      const gameWinners = state.scores
+        .map((score, idx) => score === maxScore ? idx : -1)
+        .filter(idx => idx !== -1);
+      // If there's a tie, pick the first one (or you could return all winners)
+      const winnerIndex = gameWinners[0];
       io.to(currentRoomId).emit('gameOver', {
         winner: winnerIndex,
+        winners: gameWinners, // Send all winners in case of tie
         scores: state.scores
       });
     }
@@ -469,9 +476,16 @@ io.on('connection', async (socket) => {
     });
 
     if (state.gameOver) {
-      const winnerIndex = state.scores.indexOf(Math.max(...state.scores));
+      const maxScore = Math.max(...state.scores);
+      // Find all players with the max score (handle ties)
+      const gameWinners = state.scores
+        .map((score, idx) => score === maxScore ? idx : -1)
+        .filter(idx => idx !== -1);
+      // If there's a tie, pick the first one (or you could return all winners)
+      const winnerIndex = gameWinners[0];
       io.to(currentRoomId).emit('gameOver', {
         winner: winnerIndex,
+        winners: gameWinners, // Send all winners in case of tie
         scores: state.scores
       });
     }

@@ -3,7 +3,7 @@ import { Users, Trophy, Square, Circle, Wifi, WifiOff, Plus, LogIn, Copy, Check 
 import io from 'socket.io-client';
 
 const GRID_SIZE = 8;
-const MAX_TURNS = 5;
+const MAX_TURNS = 8;
 const PLAYERS = ['Player 1', 'Player 2', 'Player 3'];
 const PLAYER_COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500'];
 const PLAYER_BORDERS = ['border-blue-500', 'border-green-500', 'border-purple-500'];
@@ -246,9 +246,17 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
     );
   };
 
-  const winner = gameState.gameOver
-    ? gameState.scores.indexOf(Math.max(...gameState.scores))
-    : null;
+  // Determine winner(s) - handle ties
+  const getWinners = () => {
+    if (!gameState.gameOver) return [];
+    const maxScore = Math.max(...gameState.scores);
+    return gameState.scores
+      .map((score, idx) => score === maxScore ? idx : -1)
+      .filter(idx => idx !== -1);
+  };
+  
+  const winners = getWinners();
+  const winner = winners.length > 0 ? winners[0] : null;
 
   const getPlayerName = (playerIndex) => {
     const playerEntry = Object.entries(gameState.players).find(([_, p]) => p.playerIndex === playerIndex);
@@ -256,24 +264,10 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-6 ">
-      <div className='min-w-screen'>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-4 sm:p-6">
+      <div className="w-full max-w-full overflow-x-hidden">
         {/* Notifications */}
-        <div className="fixed top-4 right-4 z-50 space-y-2">
-          {notifications.map(notif => (
-            <div
-              key={notif.id}
-              className={`px-4 py-3 rounded-lg shadow-lg text-white animate-slide-in ${
-                notif.type === 'success' ? 'bg-green-600' :
-                notif.type === 'error' ? 'bg-red-600' :
-                notif.type === 'warning' ? 'bg-yellow-600' :
-                'bg-blue-600'
-              }`}
-            >
-              {notif.message}
-            </div>
-          ))}
-        </div>
+
 
         {/* Header with Room ID */}
         <div className="text-center mb-6">
@@ -347,10 +341,10 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
                     </div>
                   </div>
                 </div>
-                {winner === idx && (
+                {winners.includes(idx) && (
                   <div className="mt-2 text-center bg-yellow-500 text-black font-bold py-1 rounded flex items-center justify-center gap-1">
                     <Trophy className="w-4 h-4" />
-                    Winner!
+                    {winners.length > 1 ? 'Tie!' : 'Winner!'}
                   </div>
                 )}
               </div>
