@@ -4,7 +4,9 @@ import './App.css'
 import Lobby from './lobby';
 import GridSquareGame from './gamesocket'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-const SOCKET_URL = 'http://localhost:3001';
+const SOCKET_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://api.cardhubtw.com'
+  : 'http://localhost:3001';
 
 function App() {
   const [count, setCount] = useState(0)
@@ -62,6 +64,7 @@ function App() {
     <>
       <Router>
         <Routes>
+          <Route path="/" element={<Navigate to="/lobby" replace />} />
           <Route path="/lobby" element={ 
                 <Lobby 
                 socket={socketRef.current} 

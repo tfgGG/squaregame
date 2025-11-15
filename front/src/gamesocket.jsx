@@ -9,7 +9,9 @@ const PLAYER_COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500'];
 const PLAYER_BORDERS = ['border-blue-500', 'border-green-500', 'border-purple-500'];
 
 // Connect to backend
-const SOCKET_URL = 'http://localhost:3001';
+const SOCKET_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://api.cardhubtw.com'
+  : 'http://localhost:3001';
 
 export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,onLeaveRoom}) {
   const [playerName, setPlayerName] = useState('');
