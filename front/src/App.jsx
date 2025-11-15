@@ -56,6 +56,7 @@ function App() {
   const handleLeaveRoom = () => {
     if (socketRef.current) {
       socketRef.current.disconnect();
+      socketRef.current.emit('playerLeave')
       // Reload page to reset everything
       window.location.reload();
     }

@@ -97,11 +97,12 @@ export default function Lobby({ socket, connected, myPlayerIndex ,onJoinRoom, on
 
 
   return (mode === 'game' ? 
-    <>
-    <GridSquareGame socket={socket} roomId={roomId}  connected={connected} myPlayerIndex={myPlayerIndex} onLeaveRoom={onLeaveRoom} />
+
+      <>
+    <GridSquareGame  socket={socket} roomId={roomId}  connected={connected} myPlayerIndex={myPlayerIndex} onLeaveRoom={onLeaveRoom} />
     </>:(
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
-      <div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-4 sm:p-6 lg:p-10">
+      <div className="w-full max-w-4xl mx-auto">
         {/* Notification */}
         {notification && (
           <div className="fixed top-4 right-4 z-50 animate-slide-in">

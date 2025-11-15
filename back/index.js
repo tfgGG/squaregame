@@ -174,8 +174,11 @@ app.post('/api/room/:roomId/reset', async (req, res) => {
     return res.status(404).json({ error: 'Room not found' });
   }
   
+  // Preserve players information when resetting
   const resetState = createInitialGameState();
   resetState.roomId = roomId;
+  resetState.players = state.players; // Keep existing players
+  resetState.createdAt = state.createdAt; // Keep original creation time
   
   await saveGameState(roomId, resetState);
   io.to(roomId).emit('gameStateUpdate', resetState);

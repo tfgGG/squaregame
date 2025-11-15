@@ -264,34 +264,33 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-4 sm:p-6">
-      <div className="w-full max-w-full overflow-x-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-2 sm:p-4">
+      <div className="w-full max-w-full mx-auto overflow-x-hidden">
         {/* Notifications */}
 
 
         {/* Header with Room ID */}
-        <div className="text-center mb-6">
-          <h1 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
-          
-            Grid Square Number Game
+        <div className="text-center mb-4 sm:mb-6">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+            <span className="w-full sm:w-auto">Grid Square Number Game</span>
             {connected ? (
-              <Wifi className="w-6 h-6 text-green-400" />
+              <Wifi className="w-5 h-5 sm:w-6 sm:h-6 text-green-400" />
             ) : (
-              <WifiOff className="w-6 h-6 text-red-400" />
+              <WifiOff className="w-5 h-5 sm:w-6 sm:h-6 text-red-400" />
             )}
           </h1>
           
-          <div className="flex items-center justify-center gap-3 mt-4">
-            <div className="bg-slate-700 px-6 py-2 rounded-lg">
-              <span className="text-slate-400 text-sm">Room ID: </span>
-              <span className="text-white font-mono text-xl tracking-wider">{currentRoomId}</span>
+          <div className="flex items-center justify-center gap-2 sm:gap-3 mt-3 sm:mt-4 flex-wrap">
+            <div className="bg-slate-700 px-3 sm:px-6 py-2 rounded-lg">
+              <span className="text-slate-400 text-xs sm:text-sm">Room ID: </span>
+              <span className="text-white font-mono text-lg sm:text-xl tracking-wider">{currentRoomId}</span>
             </div>
             <button
               onClick={copyRoomId}
               className="p-2 bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
               title="Copy Room ID"
             >
-              {copied ? <Check className="w-5 h-5 text-white" /> : <Copy className="w-5 h-5 text-white" />}
+              {copied ? <Check className="w-4 h-4 sm:w-5 sm:h-5 text-white" /> : <Copy className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
             </button>
           </div>
           
@@ -307,7 +306,7 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6 mb-4 sm:mb-6">
           {PLAYERS.map((name, idx) => {
             const playerName = getPlayerName(idx);
             const isActive = Object.values(gameState.players).some(p => p.playerIndex === idx);
@@ -352,11 +351,11 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
           })}
         </div>
 
-        <div className="bg-slate-800 rounded-lg p-6 mb-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <span className="text-white font-semibold">Select Number:</span>
-              <div className="flex gap-2">
+        <div className="bg-slate-800 rounded-lg p-3 sm:p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              <span className="text-white font-semibold text-sm sm:text-base">Select Number:</span>
+              <div className="flex flex-wrap gap-2">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
                   <button
                     key={num}
@@ -373,7 +372,7 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
                 ))}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               {!selectingArea ? (
                 <>
                   <button
@@ -425,8 +424,8 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
           </div>
         </div>
 
-        <div className="bg-slate-800 rounded-lg p-6">
-          <div className="inline-block">
+        <div className="bg-slate-800 rounded-lg p-2 sm:p-6 overflow-x-auto">
+          <div className="inline-block min-w-fit">
             {gameState.grid.map((row, rowIdx) => (
               <div key={rowIdx} className="flex">
                 {row.map((cell, colIdx) => {
@@ -437,8 +436,8 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
                       key={colIdx}
                       onClick={() => handleCellClick(rowIdx, colIdx)}
                       disabled={gameState.gameOver || (cell !== null && !selectingArea) || !isMyTurn()}
-                      className={`w-14 h-14 border-2 font-bold text-lg transition-all ${getCellClasses(cell)} ${
-                        isSelected ? 'ring-4 ring-yellow-400' : ''
+                      className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 border-2 font-bold text-sm sm:text-base md:text-lg transition-all ${getCellClasses(cell)} ${
+                        isSelected ? 'ring-2 sm:ring-4 ring-yellow-400' : ''
                       } ${
                         isCircled ? 'opacity-60' : ''
                       } disabled:cursor-not-allowed`}
