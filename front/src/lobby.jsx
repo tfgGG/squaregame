@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Users, Trophy, Square, Plus, LogIn, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import GridSquareGame from './gamesocket';
 
-const SOCKET_URL = 'http://localhost:3001';
+const SOCKET_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://api.cardhubtw.com'
+  : 'http://localhost:3001';
 const PLAYER_COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500'];
 
 export default function Lobby({ socket, connected, myPlayerIndex ,onJoinRoom, onLeaveRoom }) {
