@@ -4,6 +4,8 @@ services:
   frontend:
     build: ./front
     container_name: frontend
+    environment:
+      NODE_ENV: production
     expose:
       - "80"  # Add the port your frontend runs on
     depends_on:
