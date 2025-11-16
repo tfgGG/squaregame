@@ -1,22 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, Trophy, Square, Circle, Wifi, WifiOff, Plus, LogIn, Copy, Check } from 'lucide-react';
-import io from 'socket.io-client';
+import { Users, Trophy, Square, Circle, Wifi, WifiOff, Copy, Check, X, Home } from 'lucide-react';
 
 const GRID_SIZE = 8;
 const MAX_TURNS = 8;
 const PLAYERS = ['Player 1', 'Player 2', 'Player 3'];
 const PLAYER_COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500'];
-const PLAYER_BORDERS = ['border-blue-500', 'border-green-500', 'border-purple-500'];
+const PLAYER_TEXT_COLORS = ['text-blue-600', 'text-green-600', 'text-purple-600'];
 
-// Connect to backend
 const SOCKET_URL = process.env.NODE_ENV === 'production' 
   ? 'https://api.cardhubtw.com'
   : 'http://localhost:3001';
 
-export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,onLeaveRoom}) {
+export default function GridSquareGame({socket, roomId, connected, myPlayerIndex, onLeaveRoom}) {
   const [playerName, setPlayerName] = useState('');
   const [currentRoomId, setCurrentRoomId] = useState(roomId);
-  const [joined, setJoined] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const [gameState, setGameState] = useState({
@@ -35,10 +32,9 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
   const [areaStart, setAreaStart] = useState(null);
   const [areaEnd, setAreaEnd] = useState(null);
   const [notifications, setNotifications] = useState([]);
-  const [pendingCell, setPendingCell] = useState(null); // {row, col} - cell waiting for number selection
+  const [pendingCell, setPendingCell] = useState(null);
   const pendingCellRef = useRef(null);
 
-  // Initialize socket connection
   useEffect(() => {
     if (!socket) return;
 
@@ -52,7 +48,6 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
         ...state,
         selectedNumber: prevState.selectedNumber
       }));
-      // Clear pending cell if a number was placed
       if (state.hasPlaced && pendingCellRef.current) {
         setPendingCell(null);
         pendingCellRef.current = null;
@@ -112,8 +107,6 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
     socket.on('error', handleError);
 
     return () => {
-      // Remove all event listeners but don't close the socket
-      // The socket is managed by App.jsx and should remain open
       socket.off('roomJoined', handleRoomJoined);
       socket.off('gameStateUpdate', handleGameStateUpdate);
       socket.off('playerJoined', handlePlayerJoined);
@@ -152,7 +145,7 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
         col,
         value: value || gameState.selectedNumber
       });
-      setPendingCell(null); // Clear pending cell after placing
+      setPendingCell(null);
       pendingCellRef.current = null;
     }
   };
@@ -179,13 +172,12 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
         setAreaEnd({ row, col });
       }
     } else {
-      // If cell is empty and it's player's turn, show number picker overlay
-      // Allow changing the pending cell by clicking another empty cell
+      // Allow changing cell selection before placing number
       if (gameState.grid[row][col] === null && isMyTurn() && !gameState.gameOver && !gameState.hasPlaced) {
-        // Stop event propagation to prevent click-outside handler from closing overlay
         if (e) {
           e.stopPropagation();
         }
+        // Always update pending cell, even if there's already one selected
         setPendingCell({ row, col });
         pendingCellRef.current = { row, col };
       }
@@ -215,27 +207,23 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
 
   const skipTurn = () => {
     if (!isMyTurn() || !gameState.hasPlaced || !socket) return;
-    setPendingCell(null); // Clear any pending cell selection
+    setPendingCell(null);
     pendingCellRef.current = null;
     socket.emit('skipTurn');
   };
 
-  // Close overlay when clicking outside the grid (but allow changing cell by clicking another empty cell)
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (pendingCell) {
-        // Don't close if clicking on the overlay itself
         if (e.target.closest('.number-picker-overlay')) {
           return;
         }
         
-        // Don't close if clicking on a grid cell (handleCellClick will handle updating the pending cell)
-        const gridContainer = e.target.closest('.bg-slate-800.rounded-lg.p-2');
+        const gridContainer = e.target.closest('.grid-container');
         if (gridContainer) {
-          // Check if clicking on an empty cell button
           const cellButton = e.target.closest('button');
           if (cellButton && !cellButton.disabled) {
-            // Let handleCellClick handle it - don't close here
+            // Allow clicking on another empty cell to change selection
             return;
           }
         }
@@ -247,7 +235,6 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
     };
 
     if (pendingCell) {
-      // Use a slight delay to allow handleCellClick to run first
       const timeoutId = setTimeout(() => {
         document.addEventListener('mousedown', handleClickOutside, true);
       }, 100);
@@ -278,10 +265,9 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
 
   const getCellClasses = (cell) => {
     if (!cell) {
-      return 'bg-slate-700 border-white hover:bg-slate-600';
+      return 'bg-white border-gray-300 hover:bg-gray-50';
     }
     
-    // Explicitly list all possible classes so Tailwind JIT can detect them
     const player = cell.player;
     if (player === 0) {
       return 'bg-blue-500 text-white border-blue-500';
@@ -290,7 +276,7 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
     } else if (player === 2) {
       return 'bg-purple-500 text-white border-purple-500';
     }
-    return 'bg-slate-400 text-slate-300 hover:bg-slate-600';
+    return 'bg-gray-200 text-gray-600 hover:bg-gray-300';
   };
 
   const isCellInSelection = (row, col) => {
@@ -312,7 +298,6 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
     );
   };
 
-  // Determine winner(s) - handle ties
   const getWinners = () => {
     if (!gameState.gameOver) return [];
     const maxScore = Math.max(...gameState.scores);
@@ -322,7 +307,6 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
   };
   
   const winners = getWinners();
-  const winner = winners.length > 0 ? winners[0] : null;
 
   const getPlayerName = (playerIndex) => {
     const playerEntry = Object.entries(gameState.players).find(([_, p]) => p.playerIndex === playerIndex);
@@ -330,276 +314,337 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-2 sm:p-4">
-      <div className="w-full max-w-full mx-auto overflow-x-hidden">
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-7xl mx-auto">
         {/* Notifications */}
-
-
-        {/* Header with Room ID */}
-        <div className="text-center mb-4 sm:mb-6">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
-            <span className="w-full sm:w-auto">Grid Square Number Game</span>
-            {connected ? (
-              <Wifi className="w-5 h-5 sm:w-6 sm:h-6 text-green-400" />
-            ) : (
-              <WifiOff className="w-5 h-5 sm:w-6 sm:h-6 text-red-400" />
-            )}
-          </h1>
-          
-          <div className="flex items-center justify-center gap-2 sm:gap-3 mt-3 sm:mt-4 flex-wrap">
-            <div className="bg-slate-700 px-3 sm:px-6 py-2 rounded-lg">
-              <span className="text-slate-400 text-xs sm:text-sm">Room ID: </span>
-              <span className="text-white font-mono text-lg sm:text-xl tracking-wider">{currentRoomId}</span>
+        {notifications.map(notif => (
+          <div key={notif.id} className="fixed top-6 right-6 z-50 animate-slide-in">
+            <div className={`px-6 py-4 rounded-xl shadow-lg text-white font-medium ${
+              notif.type === 'success' ? 'bg-green-500' :
+              notif.type === 'error' ? 'bg-red-500' :
+              notif.type === 'warning' ? 'bg-amber-500' :
+              'bg-blue-500'
+            }`}>
+              {notif.message}
             </div>
+          </div>
+        ))}
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
+              <Square className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Square Game</h1>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span>Room: <span className="font-mono font-semibold text-gray-900">#{currentRoomId}</span></span>
+                <button
+                  onClick={copyRoomId}
+                  className="p-1 hover:bg-gray-200 rounded transition-colors"
+                  title="Copy Room ID"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5 text-gray-600" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {connected ? (
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <Wifi className="w-4 h-4" />
+                <span className="hidden sm:inline">Connected</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-red-600">
+                <WifiOff className="w-4 h-4" />
+                <span className="hidden sm:inline">Disconnected</span>
+              </div>
+            )}
+            
             <button
-              onClick={copyRoomId}
-              className="p-2 bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
-              title="Copy Room ID"
+              onClick={onLeaveRoom}
+              className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-900 font-medium rounded-lg border border-gray-300 transition-colors flex items-center gap-2"
             >
-              {copied ? <Check className="w-4 h-4 sm:w-5 sm:h-5 text-white" /> : <Copy className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
+              <Home className="w-4 h-4" />
+              <span className="hidden sm:inline">Leave Room</span>
             </button>
           </div>
-          
-          <p className="text-slate-300 mt-2">
-            You are: <span className={`font-bold ${myPlayerIndex !== null ? `text-${PLAYER_COLORS[myPlayerIndex].split('-')[1]}-400` : ''}`}>
-              {getPlayerName(myPlayerIndex)}
-            </span>
-          </p>
-          {isMyTurn() && (
-            <p className="text-yellow-400 font-semibold mt-2 animate-pulse">
-              🎮 It's your turn!
-            </p>
-          )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6 mb-4 sm:mb-6">
-          {PLAYERS.map((name, idx) => {
-            const playerName = getPlayerName(idx);
-            const isActive = Object.values(gameState.players).some(p => p.playerIndex === idx);
-            
-            return (
-              <div
-                key={idx}
-                className={`${
-                  gameState.currentPlayer === idx && !gameState.gameOver
-                    ? 'ring-4 ring-yellow-400'
-                    : ''
-                } ${
-                  idx === myPlayerIndex ? 'ring-2 ring-white' : ''
-                } ${
-                  !isActive ? 'opacity-50' : ''
-                } bg-slate-800 rounded-lg p-4 transition-all`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-4 h-4 rounded-full ${PLAYER_COLORS[idx]}`} />
-                    <span className="text-white font-semibold">
-                      {playerName}
-                      {idx === myPlayerIndex && ' (You)'}
-                    </span>
-                    {!isActive && <span className="text-xs text-slate-500">(Waiting)</span>}
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-white">{gameState.scores[idx]}</div>
-                    <div className="text-xs text-slate-400">
-                      {gameState.turns[idx]}/{MAX_TURNS} turns
-                    </div>
-                  </div>
+        {/* Current Turn Indicator */}
+        {isMyTurn() && !gameState.gameOver && (
+          <div className="mb-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl p-4 text-center">
+            <div className="text-lg font-bold">🎮 Your Turn!</div>
+            <div className="text-sm mt-1">
+              {!gameState.hasPlaced ? 'Place a number on the grid' : 'Circle an area or skip your turn'}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Game Board - Left/Center */}
+          <div className="xl:col-span-2 space-y-6 order-3 xl:order-1">
+            {/* Game Board Card */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-900">Game Board</h2>
+                <div className="text-sm text-gray-600">
+                  Turn: <span className="font-semibold text-gray-900">{getPlayerName(gameState.currentPlayer)}</span>
                 </div>
-                {winners.includes(idx) && (
-                  <div className="mt-2 text-center bg-yellow-500 text-black font-bold py-1 rounded flex items-center justify-center gap-1">
-                    <Trophy className="w-4 h-4" />
-                    {winners.length > 1 ? 'Tie!' : 'Winner!'}
+              </div>
+
+              <div className="overflow-x-auto">
+                <div className="inline-block min-w-fit grid-container">
+                  {/* Column indices */}
+                  <div className="flex ml-8">
+                    {Array(GRID_SIZE).fill(0).map((_, idx) => (
+                      <div key={idx} className="w-12 h-6 flex items-center justify-center text-xs font-semibold text-gray-600">
+                        {idx}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Grid with row indices */}
+                  {gameState.grid.map((row, rowIdx) => (
+                    <div key={rowIdx} className="flex">
+                      {/* Row index */}
+                      <div className="w-8 h-12 flex items-center justify-center text-xs font-semibold text-gray-600">
+                        {rowIdx}
+                      </div>
+                      
+                      {/* Grid cells */}
+                      {row.map((cell, colIdx) => {
+                        const isSelected = isCellInSelection(rowIdx, colIdx);
+                        const isCircled = isCellCircled(rowIdx, colIdx);
+                        const isPending = pendingCell && pendingCell.row === rowIdx && pendingCell.col === colIdx;
+                        
+                        return (
+                          <div key={colIdx} className="relative">
+                            <button
+                              onClick={(e) => handleCellClick(rowIdx, colIdx, e)}
+                              disabled={gameState.gameOver || (cell !== null && !selectingArea) || !isMyTurn()}
+                              className={`w-12 h-12 border-2 font-bold text-base transition-all rounded-lg ${getCellClasses(cell)} ${
+                                isSelected ? 'ring-4 ring-amber-400 ring-offset-1' : ''
+                              } ${
+                                isPending ? 'ring-4 ring-indigo-500 ring-offset-1' : ''
+                              } ${
+                                isCircled ? 'opacity-50' : ''
+                              } disabled:cursor-not-allowed`}
+                            >
+                              {cell ? cell.value : ''}
+                            </button>
+                            
+                            {isPending && (
+                              <div className="number-picker-overlay absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-white rounded-xl p-4 shadow-2xl border-2 border-indigo-500">
+                                <div className="text-xs font-semibold text-gray-700 mb-2 text-center">Select Number</div>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                                    <button
+                                      key={num}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleNumberSelect(num);
+                                      }}
+                                      className={`w-10 h-10 rounded-lg font-bold text-base transition-all ${
+                                        gameState.selectedNumber === num
+                                          ? `${PLAYER_COLORS[gameState.currentPlayer]} text-white ring-2 ring-offset-1 ring-gray-900`
+                                          : 'bg-gray-100 text-gray-900 hover:bg-gray-200 border border-gray-300'
+                                      }`}
+                                    >
+                                      {num}
+                                    </button>
+                                  ))}
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPendingCell(null);
+                                    pendingCellRef.current = null;
+                                  }}
+                                  className="mt-3 w-full px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1"
+                                >
+                                  <X className="w-4 h-4" />
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Game Status Messages */}
+              <div className="mt-4">
+                {selectingArea && (
+                  <div className="text-sm text-amber-600 font-medium bg-amber-50 rounded-lg p-3">
+                    {!areaStart
+                      ? '📍 Click the top-left corner of your square'
+                      : !areaEnd
+                      ? '📍 Click the bottom-right corner of your square'
+                      : '✓ Click Confirm to score this area'}
+                  </div>
+                )}
+
+                {!selectingArea && !gameState.gameOver && !isMyTurn() && (
+                  <div className="text-sm text-gray-600 font-medium bg-gray-50 rounded-lg p-3">
+                    ⏳ Waiting for {getPlayerName(gameState.currentPlayer)}'s turn...
+                  </div>
+                )}
+
+                {pendingCell && (
+                  <div className="text-sm text-indigo-600 font-medium bg-indigo-50 rounded-lg p-3">
+                    💡 Select a number (1-9) to place at position ({pendingCell.row}, {pendingCell.col})
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
+            </div>
 
-        <div className="bg-slate-800 rounded-lg p-3 sm:p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4">
-            {pendingCell && (
-              <div className="w-full sm:w-auto text-sm text-blue-400 font-semibold">
-                Click a number below the selected cell to place it, or click another empty cell to change selection
+            {/* Scored Areas */}
+            {gameState.circledAreas.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Valid Squares Found</h3>
+                <div className="space-y-3">
+                  {gameState.circledAreas.map((area, idx) => (
+                    <div key={idx} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-gray-900">
+                          {area.maxRow - area.minRow + 1}×{area.maxCol - area.minCol + 1} Square
+                        </span>
+                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
+                          Sum: {area.sum} (√{area.sum})
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-700 mb-1">
+                        {PLAYERS.map((name, pIdx) => (
+                          <span key={pIdx} className="mr-3">
+                            <span className={`inline-block w-3 h-3 rounded-full ${PLAYER_COLORS[pIdx]} mr-1`}></span>
+                            {getPlayerName(pIdx)}: {area.playerCounts[pIdx]}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="text-sm font-semibold text-amber-600">
+                        🏆 Winner{area.winners.length > 1 ? 's' : ''}: {area.winners.map(p => getPlayerName(p)).join(' & ')}
+                        {area.winners.length > 1 ? ` (${area.sum / area.winners.length} pts each)` : ` (+${area.sum} pts)`}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              {!selectingArea ? (
-                <>
-                  <button
-                    onClick={startAreaSelection}
-                    disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
-                    className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold rounded flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <Circle className="w-4 h-4" />
-                    Circle Area
-                  </button>
-                  <button
-                    onClick={skipTurn}
-                    disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
-                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title={pendingCell ? "Clear cell selection and skip turn" : "Skip turn"}
-                  >
-                    {pendingCell ? "Cancel & Skip" : "Skip Turn"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={confirmArea}
-                    disabled={!areaStart || !areaEnd}
-                    className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    onClick={cancelAreaSelection}
-                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
-              <button
-                onClick={resetGame}
-                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded transition-colors"
-              >
-                Reset
-              </button>
-              <button
-                onClick={onLeaveRoom}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded transition-colors"
-              >
-                Leave Room
-              </button>
-            </div>
           </div>
-        </div>
 
-        <div className="bg-slate-800 rounded-lg p-2 sm:p-6 overflow-x-auto">
-          <div className="inline-block min-w-fit">
-            {gameState.grid.map((row, rowIdx) => (
-              <div key={rowIdx} className="flex">
-                {row.map((cell, colIdx) => {
-                  const isSelected = isCellInSelection(rowIdx, colIdx);
-                  const isCircled = isCellCircled(rowIdx, colIdx);
-                  const isPending = pendingCell && pendingCell.row === rowIdx && pendingCell.col === colIdx;
+          {/* Sidebar - Right */}
+          <div className="space-y-6 order-1 xl:order-2">
+            {/* Player Scores */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Players Score</h3>
+              <div className="space-y-3">
+                {PLAYERS.map((name, idx) => {
+                  const playerName = getPlayerName(idx);
+                  const isActive = Object.values(gameState.players).some(p => p.playerIndex === idx);
+                  const isCurrentPlayer = gameState.currentPlayer === idx && !gameState.gameOver;
+                  const isWinner = winners.includes(idx);
+                  
                   return (
-                    <div key={colIdx} className="relative">
-                      <button
-                        onClick={(e) => handleCellClick(rowIdx, colIdx, e)}
-                        disabled={gameState.gameOver || (cell !== null && !selectingArea) || !isMyTurn()}
-                        className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 border-2 font-bold text-sm sm:text-base md:text-lg transition-all ${getCellClasses(cell)} ${
-                          isSelected ? 'ring-2 sm:ring-4 ring-yellow-400' : ''
-                        } ${
-                          isPending ? 'ring-2 sm:ring-4 ring-blue-400' : ''
-                        } ${
-                          isCircled ? 'opacity-60' : ''
-                        } disabled:cursor-not-allowed`}
-                      >
-                        {cell ? cell.value : ''}
-                      </button>
-                      {isPending && (
-                        <div className="number-picker-overlay absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-slate-800 rounded-lg p-3 shadow-2xl border-2 border-blue-400">
-                          <div className="grid grid-cols-3 gap-2">
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                              <button
-                                key={num}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleNumberSelect(num);
-                                }}
-                                className={`w-8 h-8 sm:w-10 sm:h-10 rounded font-bold text-sm sm:text-base transition-all ${
-                                  gameState.selectedNumber === num
-                                    ? `${PLAYER_COLORS[gameState.currentPlayer]} text-white ring-2 ring-white`
-                                    : 'bg-slate-600 text-white hover:bg-slate-500'
-                                }`}
-                              >
-                                {num}
-                              </button>
-                            ))}
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingCell(null);
-                              pendingCellRef.current = null;
-                            }}
-                            className="mt-2 w-full px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
-                          >
-                            Cancel
-                          </button>
+                    <div
+                      key={idx}
+                      className={`border-2 rounded-lg p-4 transition-all ${
+                        isCurrentPlayer ? 'border-indigo-500 ring-2 ring-indigo-200' : 
+                        idx === myPlayerIndex ? 'border-gray-400' :
+                        'border-gray-200'
+                      } ${!isActive ? 'opacity-50' : ''}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full ${PLAYER_COLORS[idx]}`} />
+                          <span className={`font-semibold text-gray-900 ${PLAYER_TEXT_COLORS[idx]}`}>
+                            {playerName}
+                          </span>
+                          {idx === myPlayerIndex && (
+                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded">
+                              You
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-2xl font-bold text-gray-900">{gameState.scores[idx]}</div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-xs text-gray-600">
+                        <span>Turns: {gameState.turns[idx]}/{MAX_TURNS}</span>
+                        {!isActive && <span className="text-amber-600 font-medium">Waiting...</span>}
+                      </div>
+
+                      {isWinner && (
+                        <div className="mt-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-white font-bold py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-sm">
+                          <Trophy className="w-4 h-4" />
+                          {winners.length > 1 ? 'Tie!' : 'Winner!'}
                         </div>
                       )}
                     </div>
                   );
                 })}
               </div>
-            ))}
+            </div>
+
+            {/* Actions */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Actions</h3>
+              
+              <div className="space-y-3">
+                {!selectingArea ? (
+                  <div className="flex lg:flex-col flex-row gap-2">
+                    <button
+                      onClick={startAreaSelection}
+                      disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
+                      className="w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Circle className="w-5 h-5" />
+                      Circle Square
+                    </button>
+                    
+                    <button
+                      onClick={skipTurn}
+                      disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
+                      className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Skip Turn
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={confirmArea}
+                      disabled={!areaStart || !areaEnd}
+                      className="w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Confirm Area
+                    </button>
+                    
+                    <button
+                      onClick={cancelAreaSelection}
+                      className="w-full px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors"
+                    >
+                      Cancel Selection
+                    </button>
+                  </>
+                )}
+                
+                <button
+                  onClick={resetGame}
+                  className="w-full px-4 py-3 bg-white hover:bg-gray-50 text-gray-900 font-semibold rounded-lg border border-gray-300 transition-colors"
+                >
+                  Reset Game
+                </button>
+              </div>
+            </div>
           </div>
-
-          {selectingArea && (
-            <div className="mt-4 text-yellow-400 font-semibold">
-              {!areaStart
-                ? 'Click the top-left corner of your square'
-                : !areaEnd
-                ? 'Click the bottom-right corner of your square'
-                : 'Click Confirm to score this area'}
-            </div>
-          )}
-
-          {!gameState.hasPlaced && !selectingArea && !gameState.gameOver && isMyTurn() && (
-            <div className="mt-4 text-cyan-400 font-semibold">
-              Your turn: Place a number on the grid
-            </div>
-          )}
-
-          {gameState.hasPlaced && !selectingArea && !gameState.gameOver && isMyTurn() && (
-            <div className="mt-4 text-green-400 font-semibold">
-              Number placed! Choose to "Circle Area" to score, or "Skip Turn" to pass
-            </div>
-          )}
-
-          {!isMyTurn() && !gameState.gameOver && (
-            <div className="mt-4 text-slate-400 font-semibold">
-              Waiting for {getPlayerName(gameState.currentPlayer)}'s turn...
-            </div>
-          )}
         </div>
-
-        {gameState.circledAreas.length > 0 && (
-          <div className="mt-6 bg-slate-800 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-white mb-4">Scored Areas</h3>
-            <div className="space-y-2">
-              {gameState.circledAreas.map((area, idx) => (
-                <div key={idx} className="bg-slate-700 rounded p-3 text-white">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">
-                      {area.maxRow - area.minRow + 1}×{area.maxCol - area.minCol + 1} Square:
-                    </span>
-                    <span>Sum = {area.sum} (√{area.sum} = {Math.sqrt(area.sum)})</span>
-                  </div>
-                  <div className="mt-1 text-sm">
-                    <span className="text-slate-300">Cells occupied: </span>
-                    {PLAYERS.map((name, pIdx) => (
-                      <span key={pIdx} className="ml-2">
-                        <span className={`inline-block w-3 h-3 rounded-full ${PLAYER_COLORS[pIdx]} mr-1`}></span>
-                        {getPlayerName(pIdx)}: {area.playerCounts[pIdx]}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-1 text-sm">
-                    <span className="text-yellow-400 font-semibold">
-                      Winner{area.winners.length > 1 ? 's' : ''}: {area.winners.map(p => getPlayerName(p)).join(' & ')} 
-                      {area.winners.length > 1 ? ` (${area.sum / area.winners.length} points each)` : ` (${area.sum} points)`}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <style jsx>{`
