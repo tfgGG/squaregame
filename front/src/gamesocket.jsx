@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Users, Trophy, Square, Circle, Wifi, WifiOff, Plus, LogIn, Copy, Check } from 'lucide-react';
 import io from 'socket.io-client';
 
@@ -35,6 +35,8 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
   const [areaStart, setAreaStart] = useState(null);
   const [areaEnd, setAreaEnd] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [pendingCell, setPendingCell] = useState(null); // {row, col} - cell waiting for number selection
+  const pendingCellRef = useRef(null);
 
   // Initialize socket connection
   useEffect(() => {
@@ -50,6 +52,11 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
         ...state,
         selectedNumber: prevState.selectedNumber
       }));
+      // Clear pending cell if a number was placed
+      if (state.hasPlaced && pendingCellRef.current) {
+        setPendingCell(null);
+        pendingCellRef.current = null;
+      }
     };
 
     const handlePlayerJoined = (data) => {
@@ -134,7 +141,7 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
     addNotification('Room ID copied to clipboard!', 'success');
   };
 
-  const placeNumber = (row, col) => {
+  const placeNumber = (row, col, value) => {
     if (!isMyTurn() || gameState.gameOver || gameState.grid[row][col] !== null || gameState.hasPlaced) {
       return;
     }
@@ -143,8 +150,17 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
       socket.emit('placeNumber', {
         row,
         col,
-        value: gameState.selectedNumber
+        value: value || gameState.selectedNumber
       });
+      setPendingCell(null); // Clear pending cell after placing
+      pendingCellRef.current = null;
+    }
+  };
+
+  const handleNumberSelect = (number) => {
+    if (pendingCell) {
+      placeNumber(pendingCell.row, pendingCell.col, number);
+      setGameState(prev => ({ ...prev, selectedNumber: number }));
     }
   };
 
@@ -155,7 +171,7 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
     setAreaEnd(null);
   };
 
-  const handleCellClick = (row, col) => {
+  const handleCellClick = (row, col, e) => {
     if (selectingArea) {
       if (!areaStart) {
         setAreaStart({ row, col });
@@ -163,7 +179,16 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
         setAreaEnd({ row, col });
       }
     } else {
-      placeNumber(row, col);
+      // If cell is empty and it's player's turn, show number picker overlay
+      // Allow changing the pending cell by clicking another empty cell
+      if (gameState.grid[row][col] === null && isMyTurn() && !gameState.gameOver && !gameState.hasPlaced) {
+        // Stop event propagation to prevent click-outside handler from closing overlay
+        if (e) {
+          e.stopPropagation();
+        }
+        setPendingCell({ row, col });
+        pendingCellRef.current = { row, col };
+      }
     }
   };
 
@@ -190,8 +215,49 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
 
   const skipTurn = () => {
     if (!isMyTurn() || !gameState.hasPlaced || !socket) return;
+    setPendingCell(null); // Clear any pending cell selection
+    pendingCellRef.current = null;
     socket.emit('skipTurn');
   };
+
+  // Close overlay when clicking outside the grid (but allow changing cell by clicking another empty cell)
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (pendingCell) {
+        // Don't close if clicking on the overlay itself
+        if (e.target.closest('.number-picker-overlay')) {
+          return;
+        }
+        
+        // Don't close if clicking on a grid cell (handleCellClick will handle updating the pending cell)
+        const gridContainer = e.target.closest('.bg-slate-800.rounded-lg.p-2');
+        if (gridContainer) {
+          // Check if clicking on an empty cell button
+          const cellButton = e.target.closest('button');
+          if (cellButton && !cellButton.disabled) {
+            // Let handleCellClick handle it - don't close here
+            return;
+          }
+        }
+        
+        // Close overlay for clicks outside the grid
+        setPendingCell(null);
+        pendingCellRef.current = null;
+      }
+    };
+
+    if (pendingCell) {
+      // Use a slight delay to allow handleCellClick to run first
+      const timeoutId = setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside, true);
+      }, 100);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        document.removeEventListener('mousedown', handleClickOutside, true);
+      };
+    }
+  }, [pendingCell]);
 
   const resetGame = async () => {
     if (!currentRoomId) return;
@@ -353,25 +419,11 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
 
         <div className="bg-slate-800 rounded-lg p-3 sm:p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
-              <span className="text-white font-semibold text-sm sm:text-base">Select Number:</span>
-              <div className="flex flex-wrap gap-2">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                  <button
-                    key={num}
-                    onClick={() => setGameState(prev => ({ ...prev, selectedNumber: num }))}
-                    className={`w-10 h-10 rounded ${
-                      gameState.selectedNumber === num
-                        ? `${PLAYER_COLORS[gameState.currentPlayer]} text-white`
-                        : 'bg-slate-400 text-slate-300 hover:bg-slate-600'
-                    } font-bold transition-colors`}
-                    disabled={gameState.gameOver || gameState.hasPlaced || !isMyTurn()}
-                  >
-                    {num}
-                  </button>
-                ))}
+            {pendingCell && (
+              <div className="w-full sm:w-auto text-sm text-blue-400 font-semibold">
+                Click a number below the selected cell to place it, or click another empty cell to change selection
               </div>
-            </div>
+            )}
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               {!selectingArea ? (
                 <>
@@ -387,8 +439,9 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
                     onClick={skipTurn}
                     disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
                     className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title={pendingCell ? "Clear cell selection and skip turn" : "Skip turn"}
                   >
-                    Skip Turn
+                    {pendingCell ? "Cancel & Skip" : "Skip Turn"}
                   </button>
                 </>
               ) : (
@@ -431,19 +484,55 @@ export default function GridSquareGame({socket,roomId,connected,myPlayerIndex,on
                 {row.map((cell, colIdx) => {
                   const isSelected = isCellInSelection(rowIdx, colIdx);
                   const isCircled = isCellCircled(rowIdx, colIdx);
+                  const isPending = pendingCell && pendingCell.row === rowIdx && pendingCell.col === colIdx;
                   return (
-                    <button
-                      key={colIdx}
-                      onClick={() => handleCellClick(rowIdx, colIdx)}
-                      disabled={gameState.gameOver || (cell !== null && !selectingArea) || !isMyTurn()}
-                      className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 border-2 font-bold text-sm sm:text-base md:text-lg transition-all ${getCellClasses(cell)} ${
-                        isSelected ? 'ring-2 sm:ring-4 ring-yellow-400' : ''
-                      } ${
-                        isCircled ? 'opacity-60' : ''
-                      } disabled:cursor-not-allowed`}
-                    >
-                      {cell ? cell.value : ''}
-                    </button>
+                    <div key={colIdx} className="relative">
+                      <button
+                        onClick={(e) => handleCellClick(rowIdx, colIdx, e)}
+                        disabled={gameState.gameOver || (cell !== null && !selectingArea) || !isMyTurn()}
+                        className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 border-2 font-bold text-sm sm:text-base md:text-lg transition-all ${getCellClasses(cell)} ${
+                          isSelected ? 'ring-2 sm:ring-4 ring-yellow-400' : ''
+                        } ${
+                          isPending ? 'ring-2 sm:ring-4 ring-blue-400' : ''
+                        } ${
+                          isCircled ? 'opacity-60' : ''
+                        } disabled:cursor-not-allowed`}
+                      >
+                        {cell ? cell.value : ''}
+                      </button>
+                      {isPending && (
+                        <div className="number-picker-overlay absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-slate-800 rounded-lg p-3 shadow-2xl border-2 border-blue-400">
+                          <div className="grid grid-cols-3 gap-2">
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                              <button
+                                key={num}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleNumberSelect(num);
+                                }}
+                                className={`w-8 h-8 sm:w-10 sm:h-10 rounded font-bold text-sm sm:text-base transition-all ${
+                                  gameState.selectedNumber === num
+                                    ? `${PLAYER_COLORS[gameState.currentPlayer]} text-white ring-2 ring-white`
+                                    : 'bg-slate-600 text-white hover:bg-slate-500'
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingCell(null);
+                              pendingCellRef.current = null;
+                            }}
+                            className="mt-2 w-full px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

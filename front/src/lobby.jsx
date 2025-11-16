@@ -10,11 +10,14 @@ const PLAYER_COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500'];
 export default function Lobby({ socket, connected, myPlayerIndex ,onJoinRoom, onLeaveRoom }) {
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState('');
-  const [mode, setMode] = useState('lobby'); // 'lobby', 'create', 'join',game
+  const [mode, setMode] = useState('lobby'); // 'lobby', 'create', 'join', 'selectPosition', 'game'
   const [rooms, setRooms] = useState([]);
   const [lobbyStats, setLobbyStats] = useState({ totalRooms: 0, totalPlayers: 0 });
   const [refreshing, setRefreshing] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [pendingRoomId, setPendingRoomId] = useState(null);
+  const [availablePositions, setAvailablePositions] = useState([0, 1, 2]);
+  const [selectedPosition, setSelectedPosition] = useState(null);
 
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
@@ -46,8 +49,49 @@ export default function Lobby({ socket, connected, myPlayerIndex ,onJoinRoom, on
       socket.on('roomListUpdate', (updatedRooms) => {
         setRooms(updatedRooms);
       });
+
+      socket.on('availablePositions', (data) => {
+        setAvailablePositions(data.availablePositions || [0, 1, 2]);
+      });
+
+      socket.on('error', (data) => {
+        showNotification(data.message, 'error');
+      });
     }
+
+    return () => {
+      if (socket) {
+        socket.off('roomListUpdate');
+        socket.off('availablePositions');
+        socket.off('error');
+      }
+    };
   }, [socket]);
+
+  const showPositionSelection = (targetRoomId) => {
+    setPendingRoomId(targetRoomId);
+    setSelectedPosition(null);
+    // Request available positions
+    if (socket) {
+      socket.emit('getAvailablePositions', targetRoomId);
+    }
+    setMode('selectPosition');
+  };
+
+  const confirmPositionSelection = () => {
+    if (selectedPosition === null) {
+      showNotification('Please select a position', 'error');
+      return;
+    }
+
+    if (!pendingRoomId) {
+      showNotification('No room selected', 'error');
+      return;
+    }
+
+    onJoinRoom(pendingRoomId, playerName.trim(), selectedPosition);
+    setMode('game');
+  };
 
   const createRoom = async () => {
     if (!playerName.trim()) {
@@ -61,8 +105,7 @@ export default function Lobby({ socket, connected, myPlayerIndex ,onJoinRoom, on
       });
       const data = await response.json();
       
-      onJoinRoom(data.roomId, playerName.trim());
-      setMode('game');
+      showPositionSelection(data.roomId);
     } catch (error) {
       showNotification('Failed to create room', 'error');
     }
@@ -79,8 +122,7 @@ export default function Lobby({ socket, connected, myPlayerIndex ,onJoinRoom, on
       return;
     }
 
-    onJoinRoom(roomId.trim(), playerName.trim());
-    setMode('game');
+    showPositionSelection(roomId.trim());
   };
 
   const joinRoomFromList = (selectedRoomId) => {
@@ -89,8 +131,7 @@ export default function Lobby({ socket, connected, myPlayerIndex ,onJoinRoom, on
       return;
     }
 
-    onJoinRoom(selectedRoomId, playerName.trim());
-    setMode('game')
+    showPositionSelection(selectedRoomId);
   };
 
 
@@ -316,6 +357,59 @@ export default function Lobby({ socket, connected, myPlayerIndex ,onJoinRoom, on
                 className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors"
               >
                 Back to Lobby
+              </button>
+            </div>
+          </div>
+        ) : mode === 'selectPosition' ? (
+          <div className="max-w-md mx-auto bg-slate-800 rounded-lg p-8">
+            <h2 className="text-2xl font-bold text-white mb-2 text-center">Select Your Position</h2>
+            <p className="text-slate-400 text-center mb-6">Room: {pendingRoomId}</p>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                {[0, 1, 2].map((position) => {
+                  const isAvailable = availablePositions.includes(position);
+                  const isSelected = selectedPosition === position;
+                  
+                  return (
+                    <button
+                      key={position}
+                      onClick={() => isAvailable && setSelectedPosition(position)}
+                      disabled={!isAvailable}
+                      className={`p-6 rounded-lg border-2 transition-all ${
+                        isSelected
+                          ? `${PLAYER_COLORS[position]} border-white ring-4 ring-yellow-400`
+                          : isAvailable
+                          ? `${PLAYER_COLORS[position]} border-slate-600 hover:border-white opacity-70 hover:opacity-100`
+                          : 'bg-slate-700 border-slate-600 opacity-30 cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-white mb-2">
+                          {position + 1}
+                        </div>
+                        <div className="text-sm text-white">
+                          {isAvailable ? 'Available' : 'Taken'}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={confirmPositionSelection}
+                disabled={selectedPosition === null || !connected}
+                className="w-full px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Confirm & Join
+              </button>
+              
+              <button
+                onClick={() => setMode('lobby')}
+                className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors"
+              >
+                Cancel
               </button>
             </div>
           </div>

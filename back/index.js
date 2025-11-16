@@ -235,7 +235,7 @@ io.on('connection', async (socket) => {
 
   // Register player in room
   socket.on('registerPlayer', async (data) => {
-    const { playerName, roomId } = data;
+    const { playerName, roomId, requestedPlayerIndex } = data;
     
     if (!currentRoomId && roomId) {
       currentRoomId = roomId;
@@ -255,14 +255,32 @@ io.on('connection', async (socket) => {
     }
     
     if (!state.players[socket.id]) {
-      // Find available player slot
       const assignedSlots = Object.values(state.players).map(p => p.playerIndex);
       let playerIndex = -1;
       
-      for (let i = 0; i < 3; i++) {
-        if (!assignedSlots.includes(i)) {
-          playerIndex = i;
-          break;
+      // If player requested a specific position
+      if (requestedPlayerIndex !== undefined && requestedPlayerIndex !== null) {
+        if (requestedPlayerIndex >= 0 && requestedPlayerIndex < 3) {
+          if (!assignedSlots.includes(requestedPlayerIndex)) {
+            playerIndex = requestedPlayerIndex;
+          } else {
+            socket.emit('error', { message: `Position ${requestedPlayerIndex + 1} is already taken` });
+            // Send available positions
+            const availablePositions = [0, 1, 2].filter(i => !assignedSlots.includes(i));
+            socket.emit('availablePositions', { availablePositions });
+            return;
+          }
+        } else {
+          socket.emit('error', { message: 'Invalid position selected' });
+          return;
+        }
+      } else {
+        // Auto-assign first available slot
+        for (let i = 0; i < 3; i++) {
+          if (!assignedSlots.includes(i)) {
+            playerIndex = i;
+            break;
+          }
         }
       }
 
@@ -285,6 +303,19 @@ io.on('connection', async (socket) => {
         socket.emit('error', { message: 'Room is full' });
       }
     }
+  });
+
+  // Get available positions in a room
+  socket.on('getAvailablePositions', async (roomId) => {
+    const state = await getGameState(roomId);
+    if (!state) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+    
+    const assignedSlots = Object.values(state.players).map(p => p.playerIndex);
+    const availablePositions = [0, 1, 2].filter(i => !assignedSlots.includes(i));
+    socket.emit('availablePositions', { availablePositions, roomId });
   });
 
   // Place number on grid

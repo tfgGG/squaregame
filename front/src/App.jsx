@@ -45,11 +45,15 @@ function App() {
     };
   }, []);
 
-  const handleJoinRoom = (roomId, playerName) => {
+  const handleJoinRoom = (roomId, playerName, requestedPlayerIndex = null) => {
     if (socketRef.current) {
       setCurrentRoomId(roomId);
       socketRef.current.emit('joinRoom', roomId);
-      socketRef.current.emit('registerPlayer', { playerName, roomId });
+      socketRef.current.emit('registerPlayer', { 
+        playerName, 
+        roomId, 
+        requestedPlayerIndex 
+      });
     }
   };
 
