@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Users, Trophy, Square, Circle, Wifi, WifiOff, Copy, Check, X, Home } from 'lucide-react';
 
 const GRID_SIZE = 8;
@@ -32,17 +32,34 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
   const [areaStart, setAreaStart] = useState(null);
   const [areaEnd, setAreaEnd] = useState(null);
   const [showAreaSum, setShowAreaSum] = useState(false);
-  const [calculatorMode, setCalculatorMode] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [pendingCell, setPendingCell] = useState(null);
   const pendingCellRef = useRef(null);
+
+  const pushNotification = useCallback((message, type = 'info', timestamp = Date.now()) => {
+    setNotifications(prev => [...prev, { id: timestamp, message, type }]);
+  }, []);
+
+  const addNotification = useCallback((message, type = 'info', options = {}) => {
+    const { broadcast = true, timestamp } = options;
+    const entryTimestamp = timestamp || Date.now();
+    pushNotification(message, type, entryTimestamp);
+
+    if (broadcast && socket) {
+      socket.emit('clientNotification', {
+        message,
+        type,
+        timestamp: entryTimestamp
+      });
+    }
+  }, [pushNotification, socket]);
 
   useEffect(() => {
     if (!socket) return;
 
     const handleRoomJoined = (data) => {
       setCurrentRoomId(data.roomId);
-      addNotification(`Joined room ${data.roomId}`, 'success');
+      addNotification(`Joined room ${data.roomId}`, 'success', { broadcast: false });
     };
 
     const handleGameStateUpdate = (state) => {
@@ -57,15 +74,15 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
     };
 
     const handlePlayerJoined = (data) => {
-      addNotification(`${data.name} joined the game! (${data.totalPlayers}/3)`, 'success');
+      addNotification(`${data.name} joined the game! (${data.totalPlayers}/3)`, 'success', { broadcast: false });
     };
 
     const handlePlayerLeft = (data) => {
-      addNotification(`${data.name} left the game`, 'warning');
+      addNotification(`${data.name} left the game`, 'warning', { broadcast: false });
     };
 
     const handleNumberPlaced = (data) => {
-      addNotification(`${data.playerName} placed ${data.value} at (${data.row}, ${data.col})`, 'info');
+      addNotification(`${data.playerName} placed ${data.value} at (${data.row}, ${data.col})`, 'info', { broadcast: false });
     };
 
     const handleAreaCircled = (data) => {
@@ -75,13 +92,13 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
           const playerEntry = playerEntries.find(([_, p]) => p.playerIndex === idx);
           return playerEntry ? playerEntry[1].name : `Player ${idx + 1}`;
         }).join(' & ');
-        addNotification(`${data.playerName} scored! Winners: ${winnerNames} (${data.sum} points)`, 'success');
+        addNotification(`${data.playerName} scored! Winners: ${winnerNames} (${data.sum} points)`, 'success', { broadcast: false });
         return prevState;
       });
     };
 
     const handleTurnSkipped = (data) => {
-      addNotification(`${data.playerName} skipped their turn`, 'info');
+      addNotification(`${data.playerName} skipped their turn`, 'info', { broadcast: false });
     };
 
     const handleGameOver = (data) => {
@@ -89,13 +106,18 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
         const playerEntries = Object.entries(prevState.players);
         const winnerEntry = playerEntries.find(([_, p]) => p.playerIndex === data.winner);
         const winnerName = winnerEntry ? winnerEntry[1].name : `Player ${data.winner + 1}`;
-        addNotification(`Game Over! ${winnerName} wins!`, 'success');
+        addNotification(`Game Over! ${winnerName} wins!`, 'success', { broadcast: false });
         return prevState;
       });
     };
 
     const handleError = (data) => {
-      addNotification(data.message, 'error');
+      addNotification(data.message, 'error', { broadcast: false });
+    };
+
+    const handleClientNotification = (data) => {
+      if (data.source === socket.id) return;
+      addNotification(data.message, data.type, { broadcast: false, timestamp: data.timestamp });
     };
 
     socket.on('roomJoined', handleRoomJoined);
@@ -106,6 +128,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
     socket.on('areaCircled', handleAreaCircled);
     socket.on('turnSkipped', handleTurnSkipped);
     socket.on('gameOver', handleGameOver);
+    socket.on('clientNotification', handleClientNotification);
     socket.on('error', handleError);
 
     return () => {
@@ -117,23 +140,17 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
       socket.off('areaCircled', handleAreaCircled);
       socket.off('turnSkipped', handleTurnSkipped);
       socket.off('gameOver', handleGameOver);
+      socket.off('clientNotification', handleClientNotification);
       socket.off('error', handleError);
     };
-  }, [socket]);
-
-  const addNotification = (message, type) => {
-    const id = Date.now();
-    setNotifications(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 5000);
-  };
+  }, [socket, addNotification]);
 
   const copyRoomId = () => {
     navigator.clipboard.writeText(currentRoomId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    addNotification('Room ID copied to clipboard!', 'success');
+    const name = getPlayerName(myPlayerIndex) || 'A player';
+    addNotification(`${name} copied the Room ID`, 'success', { broadcast: true });
   };
 
   const placeNumber = (row, col, value) => {
@@ -163,51 +180,54 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
   };
 
   const startAreaSelection = () => {
-    if (calculatorMode) {
-      // In calculator mode, anyone can select areas
+    const myTurn = isMyTurn();
+    
+    if (!myTurn) {
+      // Spectator / not your turn: allow selecting areas for calculation
       setSelectingArea(true);
       setAreaStart(null);
       setAreaEnd(null);
       setShowAreaSum(false);
-    } else {
-      // In play mode, only current player can circle for scoring
-      if (!isMyTurn() || !gameState.hasPlaced) return;
-      setSelectingArea(true);
-      setAreaStart(null);
-      setAreaEnd(null);
-      setShowAreaSum(false);
+      return;
     }
-  };
-  
-  const toggleCalculatorMode = () => {
-    setCalculatorMode(!calculatorMode);
-    setSelectingArea(false);
+
+    // Active player's turn: must have placed a number before circling
+    if (gameState.gameOver || !gameState.hasPlaced) return;
+    setSelectingArea(true);
     setAreaStart(null);
     setAreaEnd(null);
     setShowAreaSum(false);
-    setPendingCell(null);
-    pendingCellRef.current = null;
   };
-
+  
   const handleCellClick = (row, col, e) => {
     // Stop propagation to prevent click-outside handler
     if (e) {
       e.stopPropagation();
     }
     
+    const spectatorActive = !isMyTurn();
+
+    if (!selectingArea && spectatorActive && !gameState.gameOver) {
+      // Spectators can start a calculation selection directly by clicking
+      setSelectingArea(true);
+      setAreaStart({ row, col });
+      setAreaEnd(null);
+      setShowAreaSum(false);
+      return;
+    }
+
     if (selectingArea) {
       if (!areaStart) {
         setAreaStart({ row, col });
+        setAreaEnd(null);
+        setShowAreaSum(false);
       } else {
         setAreaEnd({ row, col });
-        // Auto-show sum in calculator mode
-        if (calculatorMode) {
-          setShowAreaSum(true);
-        }
+        setShowAreaSum(true);
       }
     } else {
       // Only allow placing numbers in play mode and when it's player's turn
-      if (!calculatorMode && gameState.grid[row][col] === null && isMyTurn() && !gameState.gameOver && !gameState.hasPlaced) {
+      if (isMyTurn() && gameState.grid[row][col] === null && !gameState.gameOver && !gameState.hasPlaced) {
         // Always update pending cell, even if there's already one selected
         setPendingCell({ row, col });
         pendingCellRef.current = { row, col };
@@ -227,10 +247,17 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
       minRow, maxRow, minCol, maxCol
     });
 
-    cancelAreaSelection();
+    cancelAreaSelection(true);
   };
 
-  const cancelAreaSelection = () => {
+  const cancelAreaSelection = (forceExit = false) => {
+    if (!forceExit && (areaStart || areaEnd || showAreaSum)) {
+      setAreaStart(null);
+      setAreaEnd(null);
+      setShowAreaSum(false);
+      return;
+    }
+
     setSelectingArea(false);
     setAreaStart(null);
     setAreaEnd(null);
@@ -288,7 +315,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
       await fetch(`${SOCKET_URL}/api/room/${currentRoomId}/reset`, {
         method: 'POST'
       });
-      cancelAreaSelection();
+      cancelAreaSelection(true);
     } catch (error) {
       console.error('Error resetting game:', error);
     }
@@ -300,16 +327,16 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
 
   const getCellClasses = (cell) => {
     if (!cell) {
-      return 'bg-white border-gray-300 hover:bg-gray-50';
+      return 'bg-slate-100 border-gray-300 hover:bg-zinc-100';
     }
     
     const player = cell.player;
     if (player === 0) {
-      return 'bg-blue-500 text-white border-blue-500';
+      return 'bg-blue-500 text-white';
     } else if (player === 1) {
-      return 'bg-green-500 text-white border-green-500';
+      return 'bg-green-500 text-white ';
     } else if (player === 2) {
-      return 'bg-purple-500 text-white border-purple-500';
+      return 'bg-purple-500 text-white';
     }
     return 'bg-gray-200 text-gray-600 hover:bg-gray-300';
   };
@@ -331,6 +358,19 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
       row >= area.minRow && row <= area.maxRow &&
       col >= area.minCol && col <= area.maxCol
     );
+  };
+
+  const getLogClasses = (type) => {
+    switch (type) {
+      case 'success':
+        return 'border-green-200 bg-green-50 text-green-700';
+      case 'error':
+        return 'border-red-200 bg-red-50 text-red-700';
+      case 'warning':
+        return 'border-amber-200 bg-amber-50 text-amber-700';
+      default:
+        return 'border-blue-200 bg-blue-50 text-blue-700';
+    }
   };
 
   const getWinners = () => {
@@ -364,6 +404,9 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
   };
   
   const winners = getWinners();
+  const isPlayersTurn = isMyTurn();
+  const isSpectatorMode = !isPlayersTurn;
+  const visibleNotifications = [...notifications].reverse();
 
   const getPlayerName = (playerIndex) => {
     const playerEntry = Object.entries(gameState.players).find(([_, p]) => p.playerIndex === playerIndex);
@@ -373,20 +416,6 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Notifications */}
-        {notifications.map(notif => (
-          <div key={notif.id} className="fixed top-6 right-6 z-50 animate-slide-in">
-            <div className={`px-6 py-4 rounded-xl shadow-lg text-white font-medium ${
-              notif.type === 'success' ? 'bg-green-500' :
-              notif.type === 'error' ? 'bg-red-500' :
-              notif.type === 'warning' ? 'bg-amber-500' :
-              'bg-blue-500'
-            }`}>
-              {notif.message}
-            </div>
-          </div>
-        ))}
-
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -432,7 +461,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
         </div>
 
         {/* Current Turn Indicator */}
-        {isMyTurn() && !gameState.gameOver && !calculatorMode && (
+        {isPlayersTurn && !gameState.gameOver && (
           <div className="mb-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl p-4 text-center">
             <div className="text-lg font-bold">🎮 Your Turn!</div>
             <div className="text-sm mt-1">
@@ -441,9 +470,9 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
           </div>
         )}
         
-        {calculatorMode && (
+        {isSpectatorMode && (
           <div className="mb-6 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl p-4 text-center">
-            <div className="text-lg font-bold">🧮 Calculator Mode</div>
+            <div className="text-lg font-bold">⏳ Waiting for {getPlayerName(gameState.currentPlayer)}'s turn...</div>
             <div className="text-sm mt-1">
               Select any area on the grid to calculate its sum
             </div>
@@ -467,8 +496,8 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                   {/* Column indices */}
                   <div className="flex ml-8">
                     {Array(GRID_SIZE).fill(0).map((_, idx) => (
-                      <div key={idx} className="w-12 h-6 flex items-center justify-center text-xs font-semibold text-gray-600">
-                        {idx}
+                      <div key={idx} className="w-12 h-6 ml-2 flex items-center justify-center text-xs font-semibold text-gray-600">
+                        {String.fromCharCode(idx +65)}
                       </div>
                     ))}
                   </div>
@@ -489,13 +518,16 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                         
                         return (
                           <div key={colIdx} className="relative">
-                            <button
-                              onClick={(e) => handleCellClick(rowIdx, colIdx, e)}
-                              disabled={gameState.gameOver || (cell !== null && !selectingArea) || !isMyTurn()}
-                              className={`grid-cell-button w-12 h-12 border-2 font-bold text-base transition-all rounded-lg ${getCellClasses(cell)} ${
-                                isSelected ? 'ring-4 ring-amber-400 ring-offset-1' : ''
+                      <button
+                        onClick={(e) => handleCellClick(rowIdx, colIdx, e)}
+                        disabled={
+                          gameState.gameOver ||
+                          (!selectingArea && isPlayersTurn && (cell !== null || gameState.hasPlaced))
+                        }
+                              className={`grid-cell-button w-12 h-12 m-0.5 border-2 font-bold text-base transition-all ${getCellClasses(cell)} ${
+                                isSelected ? ' rounded-none ring-3 ring-amber-400 ring-offset-1 ' : ''
                               } ${
-                                isPending ? 'ring-4 ring-indigo-500 ring-offset-1' : ''
+                                isPending ? ' rounded-none ring-3 ring-indigo-500 ring-offset-1' : ''
                               } ${
                                 isCircled ? 'opacity-50' : ''
                               } disabled:cursor-not-allowed`}
@@ -504,9 +536,9 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                             </button>
                             
                             {isPending && (
-                              <div className="number-picker-overlay absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-white rounded-xl p-4 shadow-2xl border-2 border-indigo-500">
+                              <div className="number-picker-overlay absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-white rounded-xl p-4 shadow-2xl border-2 border-indigo-500 w-45">
                                 <div className="text-xs font-semibold text-gray-700 mb-2 text-center">Select Number</div>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-3 gap-2 w-full">
                                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
                                     <button
                                       key={num}
@@ -514,7 +546,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                                         e.stopPropagation();
                                         handleNumberSelect(num);
                                       }}
-                                      className={`w-10 h-10 rounded-lg font-bold text-base transition-all ${
+                                      className={`w-10 h-10 rounded-lg  font-bold text-base transition-all ${
                                         gameState.selectedNumber === num
                                           ? `${PLAYER_COLORS[gameState.currentPlayer]} text-white ring-2 ring-offset-1 ring-gray-900`
                                           : 'bg-gray-100 text-gray-900 hover:bg-gray-200 border border-gray-300'
@@ -547,15 +579,13 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
 
               {/* Game Status Messages */}
               <div className="mt-4">
-                {selectingArea && calculatorMode && (
+                {selectingArea && isSpectatorMode && (
                   <div className="space-y-2">
-                    <div className="text-sm text-blue-600 font-medium bg-blue-50 rounded-lg p-3">
-                      {!areaStart
-                        ? '🧮 Click the top-left corner of the area'
-                        : !areaEnd
-                        ? '🧮 Click the bottom-right corner of the area'
-                        : '✓ Area sum calculated below'}
-                    </div>
+                   
+                      { !areaEnd &&  <div className="text-sm text-blue-600 font-medium bg-blue-50 rounded-lg p-3">
+                         '🧮 Click the bottom-right corner of the area'</div>
+                      }
+                    
                     {showAreaSum && areaStart && areaEnd && (
                       <div className="text-sm font-bold text-green-600 bg-green-50 rounded-lg p-3">
                         <div className="flex items-center justify-between mb-1">
@@ -570,14 +600,14 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                   </div>
                 )}
                 
-                {selectingArea && !calculatorMode && (
+                {selectingArea && !isSpectatorMode && (
                   <div className="space-y-2">
-                    <div className="text-sm text-amber-600 font-medium bg-amber-50 rounded-lg p-3">
+                      <div className="text-sm text-amber-600 font-medium bg-amber-50 rounded-lg p-3">
                       {!areaStart
                         ? '📍 Click the top-left corner of your square'
                         : !areaEnd
                         ? '📍 Click the bottom-right corner of your square'
-                        : '✓ Click Confirm to score this area or Calculate Square to check sum'}
+                        : '✓ Sum shown below. Click Confirm to score this area'}
                     </div>
                     {showAreaSum && areaStart && areaEnd && (
                       <div className="text-sm font-bold text-green-600 bg-green-50 rounded-lg p-3">
@@ -593,19 +623,51 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                   </div>
                 )}
 
-                {!selectingArea && !gameState.gameOver && !isMyTurn() && !calculatorMode && (
-                  <div className="text-sm text-gray-600 font-medium bg-gray-50 rounded-lg p-3">
-                    ⏳ Waiting for {getPlayerName(gameState.currentPlayer)}'s turn...
-                  </div>
-                )}
 
-                {pendingCell && !calculatorMode && (
+                {pendingCell && !isSpectatorMode && (
                   <div className="text-sm text-indigo-600 font-medium bg-indigo-50 rounded-lg p-3">
                     💡 Select a number (1-9) to place at position ({pendingCell.row}, {pendingCell.col})
                   </div>
                 )}
               </div>
             </div>
+
+          {/* Activity Log */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Activity Log</h3>
+                <p className="text-sm text-gray-500">
+                  {notifications.length === 0
+                    ? 'No game activity yet'
+                    : `${notifications.length} event${notifications.length > 1 ? 's' : ''} recorded`}
+                </p>
+              </div>
+            </div>
+
+            {notifications.length === 0 ? (
+              <div className="text-sm text-gray-500 bg-gray-50 border border-dashed border-gray-200 rounded-lg p-4 text-center">
+                Game actions and events will appear here.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {visibleNotifications.map((notif) => (
+                  <div
+                    key={notif.id}
+                    className={`rounded-lg p-3 border text-sm ${getLogClasses(notif.type)}`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold capitalize">{notif.type || 'info'}</span>
+                      <span className="text-xs opacity-70 font-mono">
+                        {new Date(notif.id).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <div>{notif.message}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
             {/* Scored Areas */}
             {gameState.circledAreas.length > 0 && (
@@ -698,53 +760,27 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
             <div className="bg-white rounded-xl border border-gray-200 p-6 order-2 xl:order-none">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Actions</h3>
               <div className="space-y-3">
-                {/* Mode Toggle */}
-                <button
-                  onClick={toggleCalculatorMode}
-                  className={`w-full px-4 py-3 font-semibold rounded-lg transition-colors ${
-                    calculatorMode
-                      ? 'bg-indigo-500 hover:bg-indigo-600 text-white'
-                      : 'bg-blue-500 hover:bg-blue-600 text-white'
-                  }`}
-                >
-                  {calculatorMode ? '🎮 Switch to Play Mode' : '🧮 Switch to Calculator Mode'}
-                </button>
-                
-                <div className="border-t border-gray-200 my-3"></div>
-                
-                {calculatorMode ? (
-                  /* Calculator Mode Actions */
+                {isSpectatorMode ? (
                   <>
-                    {!selectingArea ? (
+                    <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+                      Click any two cells to measure a square. Use cancel to clear.
+                    </div>
+                    {selectingArea && (
                       <button
-                        onClick={startAreaSelection}
-                        className="w-full px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Circle className="w-5 h-5" />
-                        Calculate Area Sum
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setSelectingArea(false);
-                          setAreaStart(null);
-                          setAreaEnd(null);
-                          setShowAreaSum(false);
-                        }}
+                        onClick={cancelAreaSelection}
                         className="w-full px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors"
                       >
-                        Clear Selection
+                        Cancel Selection
                       </button>
                     )}
                   </>
                 ) : (
-                  /* Play Mode Actions */
                   <>
                     {!selectingArea ? (
                       <>
                         <button
                           onClick={startAreaSelection}
-                          disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
+                          disabled={gameState.gameOver || !gameState.hasPlaced || !isPlayersTurn}
                           className="w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                         >
                           <Circle className="w-5 h-5" />
@@ -753,7 +789,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                         
                         <button
                           onClick={skipTurn}
-                          disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
+                          disabled={gameState.gameOver || !gameState.hasPlaced || !isPlayersTurn}
                           className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           Skip Turn
@@ -770,14 +806,6 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                         </button>
                         
                         <button
-                          onClick={() => setShowAreaSum(true)}
-                          disabled={!areaStart || !areaEnd}
-                          className="w-full px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Calculate Square
-                        </button>
-                        
-                        <button
                           onClick={cancelAreaSelection}
                           className="w-full px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors"
                         >
@@ -787,7 +815,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                     )}
                   </>
                 )}
-                
+
                 <div className="border-t border-gray-200 my-3"></div>
                 
                 <button

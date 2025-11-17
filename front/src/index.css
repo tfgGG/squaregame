@@ -14,6 +14,22 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.my-scroll::-webkit-scrollbar {
+
+  height: 8px; /* Made it thinner for horizontal scroll */
+}
+
+.my-scroll::-webkit-scrollbar-track {
+  background: #d8d1fc;
+  border-radius: 10px;
+}
+
+.my-scroll::-webkit-scrollbar-thumb {
+  background: #9188ed;
+  border-radius: 8px;
+}
+
+
 a {
   font-weight: 500;
   color: #646cff;

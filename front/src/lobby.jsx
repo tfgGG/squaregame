@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Trophy, Square, Plus, LogIn, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { Users, Trophy, Square, Plus, LogIn, Wifi, WifiOff, RefreshCw, Menu, X } from 'lucide-react';
 import GridSquareGame from './gamesocket';
 
 const SOCKET_URL = process.env.NODE_ENV === 'production' 
@@ -18,6 +18,7 @@ export default function Lobby({ socket, connected, myPlayerIndex, onJoinRoom, on
   const [pendingRoomId, setPendingRoomId] = useState(null);
   const [availablePositions, setAvailablePositions] = useState([0, 1, 2]);
   const [selectedPosition, setSelectedPosition] = useState(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
@@ -133,8 +134,36 @@ export default function Lobby({ socket, connected, myPlayerIndex, onJoinRoom, on
     showPositionSelection(selectedRoomId);
   };
 
+  const navItems = [
+    { label: 'Game',icon:"🎮", action: () => setMode('lobby') },
+    { label: 'Rules',icon:"📍", action: () => showNotification('Rules coming soon.', 'info') },
+    { label: 'Leaderboard', icon:"🎮",action: () => showNotification('Leaderboard coming soon.', 'info') },
+    { label: 'Profile', icon:"🎮", action: () => showNotification('Profile coming soon.', 'info') }
+  ];
+
+  const handleNavItemClick = (action) => {
+    if (typeof action === 'function') {
+      action();
+    }
+    setMobileNavOpen(false);
+  };
+
+  const handleNewGameClick = () => {
+    if (!connected || !playerName.trim()) return;
+    setMode('create');
+    setMobileNavOpen(false);
+  };
+
   if (mode === 'game') {
-    return <GridSquareGame socket={socket} roomId={roomId} connected={connected} myPlayerIndex={myPlayerIndex}  onLeaveRoom={onLeaveRoom} ></GridSquareGame> // GridSquareGame component would be rendered here
+    return (
+      <GridSquareGame
+        socket={socket}
+        roomId={roomId}
+        connected={connected}
+        myPlayerIndex={myPlayerIndex}
+        onLeaveRoom={onLeaveRoom}
+      />
+    );
   }
 
   return (
@@ -156,31 +185,46 @@ export default function Lobby({ socket, connected, myPlayerIndex, onJoinRoom, on
         )}
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <Square className="w-6 h-6 text-white" />
+        <header className=" mb-6 p-3 sm:px-6">
+          <div className="flex flex-wrap items-center gap-4 justify-between">
+            <div className="flex items-center gap-3">
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">Square Game</h1>
+                <p className="text-sm text-gray-500">Create rooms, invite friends, and start playing instantly</p>
+              </div>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Square Game</h1>
-          </div>
 
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-4 text-sm">
-              <button className="text-gray-600 hover:text-gray-900 font-medium">Game</button>
-              <button className="text-gray-600 hover:text-gray-900 font-medium">Rules</button>
-              <button className="text-gray-600 hover:text-gray-900 font-medium">Leaderboard</button>
-              <button className="text-gray-600 hover:text-gray-900 font-medium">Profile</button>
-            </div>
+            <div className='relative mt-4 mb-12 p-2 sm:mb-1'>
+              <div className="flex items-cente  sm:overflow-hidden overflow-x-scroll sm:bg-transparent overflow-y-hidden my-scroll bg-white bg-opacity-50 absolute sm:relative sm:w-full sm:-translatate-x-1/8  -translate-x-1/8 w-screen">
+                {navItems.map(({ label, icon ,action }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => handleNavItemClick(action)}
+                    className=" py-2 flex text-md font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <div className='flex-row flex gap-1'><span>o</span><span>{label}</span></div> 
+                  </button>
+                ))}
+              </div>
+              </div>
             
-            <button 
-              onClick={() => setMode('create')}
-              disabled={!connected || !playerName.trim()}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              New Game
-            </button>
           </div>
-        </div>
+          {mobileNavOpen && (
+            <div className="mt-4 grid gap-2 md:hidden border-t border-gray-200 pt-4">
+              {navItems.map(({ label, action }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => handleNavItemClick(action)}
+                  className="w-full text-left px-4 py-2 rounded-lg text-gray-700 font-medium hover:bg-gray-100 transition-colors"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </header>
 
         {/* Connection Status - Subtle */}
         {!connected && (
