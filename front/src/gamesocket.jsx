@@ -31,6 +31,8 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
   const [selectingArea, setSelectingArea] = useState(false);
   const [areaStart, setAreaStart] = useState(null);
   const [areaEnd, setAreaEnd] = useState(null);
+  const [showAreaSum, setShowAreaSum] = useState(false);
+  const [calculatorMode, setCalculatorMode] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [pendingCell, setPendingCell] = useState(null);
   const pendingCellRef = useRef(null);
@@ -154,29 +156,58 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
     if (pendingCell) {
       placeNumber(pendingCell.row, pendingCell.col, number);
       setGameState(prev => ({ ...prev, selectedNumber: number }));
+      // Close the number picker after placing
+      setPendingCell(null);
+      pendingCellRef.current = null;
     }
   };
 
   const startAreaSelection = () => {
-    if (!isMyTurn() || !gameState.hasPlaced) return;
-    setSelectingArea(true);
+    if (calculatorMode) {
+      // In calculator mode, anyone can select areas
+      setSelectingArea(true);
+      setAreaStart(null);
+      setAreaEnd(null);
+      setShowAreaSum(false);
+    } else {
+      // In play mode, only current player can circle for scoring
+      if (!isMyTurn() || !gameState.hasPlaced) return;
+      setSelectingArea(true);
+      setAreaStart(null);
+      setAreaEnd(null);
+      setShowAreaSum(false);
+    }
+  };
+  
+  const toggleCalculatorMode = () => {
+    setCalculatorMode(!calculatorMode);
+    setSelectingArea(false);
     setAreaStart(null);
     setAreaEnd(null);
+    setShowAreaSum(false);
+    setPendingCell(null);
+    pendingCellRef.current = null;
   };
 
   const handleCellClick = (row, col, e) => {
+    // Stop propagation to prevent click-outside handler
+    if (e) {
+      e.stopPropagation();
+    }
+    
     if (selectingArea) {
       if (!areaStart) {
         setAreaStart({ row, col });
       } else {
         setAreaEnd({ row, col });
+        // Auto-show sum in calculator mode
+        if (calculatorMode) {
+          setShowAreaSum(true);
+        }
       }
     } else {
-      // Allow changing cell selection before placing number
-      if (gameState.grid[row][col] === null && isMyTurn() && !gameState.gameOver && !gameState.hasPlaced) {
-        if (e) {
-          e.stopPropagation();
-        }
+      // Only allow placing numbers in play mode and when it's player's turn
+      if (!calculatorMode && gameState.grid[row][col] === null && isMyTurn() && !gameState.gameOver && !gameState.hasPlaced) {
         // Always update pending cell, even if there's already one selected
         setPendingCell({ row, col });
         pendingCellRef.current = { row, col };
@@ -203,6 +234,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
     setSelectingArea(false);
     setAreaStart(null);
     setAreaEnd(null);
+    setShowAreaSum(false);
   };
 
   const skipTurn = () => {
@@ -215,29 +247,32 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (pendingCell) {
+        // Don't close if clicking on the number picker overlay
         if (e.target.closest('.number-picker-overlay')) {
           return;
         }
         
+        // Don't close if clicking on a grid cell button - let handleCellClick handle it
         const gridContainer = e.target.closest('.grid-container');
         if (gridContainer) {
-          const cellButton = e.target.closest('button');
-          if (cellButton && !cellButton.disabled) {
-            // Allow clicking on another empty cell to change selection
+          const cellButton = e.target.closest('.grid-cell-button');
+          if (cellButton) {
+            // Let the cell click handler update the pending cell
             return;
           }
         }
         
-        // Close overlay for clicks outside the grid
+        // Close overlay for clicks outside the grid and overlay
         setPendingCell(null);
         pendingCellRef.current = null;
       }
     };
 
     if (pendingCell) {
+      // Add listener after a short delay to prevent immediate closure
       const timeoutId = setTimeout(() => {
         document.addEventListener('mousedown', handleClickOutside, true);
-      }, 100);
+      }, 50);
       
       return () => {
         clearTimeout(timeoutId);
@@ -306,6 +341,28 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
       .filter(idx => idx !== -1);
   };
   
+  // Calculate sum of selected area
+  const calculateAreaSum = () => {
+    if (!areaStart || !areaEnd) return 0;
+    
+    const minRow = Math.min(areaStart.row, areaEnd.row);
+    const maxRow = Math.max(areaStart.row, areaEnd.row);
+    const minCol = Math.min(areaStart.col, areaEnd.col);
+    const maxCol = Math.max(areaStart.col, areaEnd.col);
+    
+    let sum = 0;
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        const cell = gameState.grid[row][col];
+        if (cell && cell.value) {
+          sum += cell.value;
+        }
+      }
+    }
+    
+    return sum;
+  };
+  
   const winners = getWinners();
 
   const getPlayerName = (playerIndex) => {
@@ -314,7 +371,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Notifications */}
         {notifications.map(notif => (
@@ -375,11 +432,20 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
         </div>
 
         {/* Current Turn Indicator */}
-        {isMyTurn() && !gameState.gameOver && (
+        {isMyTurn() && !gameState.gameOver && !calculatorMode && (
           <div className="mb-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl p-4 text-center">
             <div className="text-lg font-bold">🎮 Your Turn!</div>
             <div className="text-sm mt-1">
               {!gameState.hasPlaced ? 'Place a number on the grid' : 'Circle an area or skip your turn'}
+            </div>
+          </div>
+        )}
+        
+        {calculatorMode && (
+          <div className="mb-6 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl p-4 text-center">
+            <div className="text-lg font-bold">🧮 Calculator Mode</div>
+            <div className="text-sm mt-1">
+              Select any area on the grid to calculate its sum
             </div>
           </div>
         )}
@@ -426,7 +492,7 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
                             <button
                               onClick={(e) => handleCellClick(rowIdx, colIdx, e)}
                               disabled={gameState.gameOver || (cell !== null && !selectingArea) || !isMyTurn()}
-                              className={`w-12 h-12 border-2 font-bold text-base transition-all rounded-lg ${getCellClasses(cell)} ${
+                              className={`grid-cell-button w-12 h-12 border-2 font-bold text-base transition-all rounded-lg ${getCellClasses(cell)} ${
                                 isSelected ? 'ring-4 ring-amber-400 ring-offset-1' : ''
                               } ${
                                 isPending ? 'ring-4 ring-indigo-500 ring-offset-1' : ''
@@ -481,23 +547,59 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
 
               {/* Game Status Messages */}
               <div className="mt-4">
-                {selectingArea && (
-                  <div className="text-sm text-amber-600 font-medium bg-amber-50 rounded-lg p-3">
-                    {!areaStart
-                      ? '📍 Click the top-left corner of your square'
-                      : !areaEnd
-                      ? '📍 Click the bottom-right corner of your square'
-                      : '✓ Click Confirm to score this area'}
+                {selectingArea && calculatorMode && (
+                  <div className="space-y-2">
+                    <div className="text-sm text-blue-600 font-medium bg-blue-50 rounded-lg p-3">
+                      {!areaStart
+                        ? '🧮 Click the top-left corner of the area'
+                        : !areaEnd
+                        ? '🧮 Click the bottom-right corner of the area'
+                        : '✓ Area sum calculated below'}
+                    </div>
+                    {showAreaSum && areaStart && areaEnd && (
+                      <div className="text-sm font-bold text-green-600 bg-green-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span>Selected Area Sum:</span>
+                          <span className="text-lg">{calculateAreaSum()}</span>
+                        </div>
+                        <div className="text-gray-600 text-xs">
+                          Square root: √{calculateAreaSum()} = {Math.sqrt(calculateAreaSum()).toFixed(2)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {selectingArea && !calculatorMode && (
+                  <div className="space-y-2">
+                    <div className="text-sm text-amber-600 font-medium bg-amber-50 rounded-lg p-3">
+                      {!areaStart
+                        ? '📍 Click the top-left corner of your square'
+                        : !areaEnd
+                        ? '📍 Click the bottom-right corner of your square'
+                        : '✓ Click Confirm to score this area or Calculate Square to check sum'}
+                    </div>
+                    {showAreaSum && areaStart && areaEnd && (
+                      <div className="text-sm font-bold text-green-600 bg-green-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span>Selected Area Sum:</span>
+                          <span className="text-lg">{calculateAreaSum()}</span>
+                        </div>
+                        <div className="text-gray-600 text-xs">
+                          Square root: √{calculateAreaSum()} = {Math.sqrt(calculateAreaSum()).toFixed(2)}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {!selectingArea && !gameState.gameOver && !isMyTurn() && (
+                {!selectingArea && !gameState.gameOver && !isMyTurn() && !calculatorMode && (
                   <div className="text-sm text-gray-600 font-medium bg-gray-50 rounded-lg p-3">
                     ⏳ Waiting for {getPlayerName(gameState.currentPlayer)}'s turn...
                   </div>
                 )}
 
-                {pendingCell && (
+                {pendingCell && !calculatorMode && (
                   <div className="text-sm text-indigo-600 font-medium bg-indigo-50 rounded-lg p-3">
                     💡 Select a number (1-9) to place at position ({pendingCell.row}, {pendingCell.col})
                   </div>
@@ -593,47 +695,100 @@ export default function GridSquareGame({socket, roomId, connected, myPlayerIndex
             </div>
 
             {/* Actions */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-6 order-2 xl:order-none">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Actions</h3>
-              
               <div className="space-y-3">
-                {!selectingArea ? (
-                  <div className="flex lg:flex-col flex-row gap-2">
-                    <button
-                      onClick={startAreaSelection}
-                      disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
-                      className="w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Circle className="w-5 h-5" />
-                      Circle Square
-                    </button>
-                    
-                    <button
-                      onClick={skipTurn}
-                      disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
-                      className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Skip Turn
-                    </button>
-                  </div>
-                ) : (
+                {/* Mode Toggle */}
+                <button
+                  onClick={toggleCalculatorMode}
+                  className={`w-full px-4 py-3 font-semibold rounded-lg transition-colors ${
+                    calculatorMode
+                      ? 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                      : 'bg-blue-500 hover:bg-blue-600 text-white'
+                  }`}
+                >
+                  {calculatorMode ? '🎮 Switch to Play Mode' : '🧮 Switch to Calculator Mode'}
+                </button>
+                
+                <div className="border-t border-gray-200 my-3"></div>
+                
+                {calculatorMode ? (
+                  /* Calculator Mode Actions */
                   <>
-                    <button
-                      onClick={confirmArea}
-                      disabled={!areaStart || !areaEnd}
-                      className="w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Confirm Area
-                    </button>
-                    
-                    <button
-                      onClick={cancelAreaSelection}
-                      className="w-full px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors"
-                    >
-                      Cancel Selection
-                    </button>
+                    {!selectingArea ? (
+                      <button
+                        onClick={startAreaSelection}
+                        className="w-full px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Circle className="w-5 h-5" />
+                        Calculate Area Sum
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setSelectingArea(false);
+                          setAreaStart(null);
+                          setAreaEnd(null);
+                          setShowAreaSum(false);
+                        }}
+                        className="w-full px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors"
+                      >
+                        Clear Selection
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  /* Play Mode Actions */
+                  <>
+                    {!selectingArea ? (
+                      <>
+                        <button
+                          onClick={startAreaSelection}
+                          disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
+                          className="w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Circle className="w-5 h-5" />
+                          Circle Square
+                        </button>
+                        
+                        <button
+                          onClick={skipTurn}
+                          disabled={gameState.gameOver || !gameState.hasPlaced || !isMyTurn()}
+                          className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Skip Turn
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={confirmArea}
+                          disabled={!areaStart || !areaEnd}
+                          className="w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Confirm Area
+                        </button>
+                        
+                        <button
+                          onClick={() => setShowAreaSum(true)}
+                          disabled={!areaStart || !areaEnd}
+                          className="w-full px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Calculate Square
+                        </button>
+                        
+                        <button
+                          onClick={cancelAreaSelection}
+                          className="w-full px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors"
+                        >
+                          Cancel Selection
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
+                
+                <div className="border-t border-gray-200 my-3"></div>
                 
                 <button
                   onClick={resetGame}

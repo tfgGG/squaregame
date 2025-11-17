@@ -165,14 +165,18 @@ export default function Lobby({ socket, connected, myPlayerIndex, onJoinRoom, on
           </div>
 
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-4 text-sm">
+            <div className="hidden md:flex items-center gap-4 text-sm">
               <button className="text-gray-600 hover:text-gray-900 font-medium">Game</button>
               <button className="text-gray-600 hover:text-gray-900 font-medium">Rules</button>
               <button className="text-gray-600 hover:text-gray-900 font-medium">Leaderboard</button>
               <button className="text-gray-600 hover:text-gray-900 font-medium">Profile</button>
             </div>
             
-            <button className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
+            <button 
+              onClick={() => setMode('create')}
+              disabled={!connected || !playerName.trim()}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
               New Game
             </button>
           </div>
@@ -188,8 +192,55 @@ export default function Lobby({ socket, connected, myPlayerIndex, onJoinRoom, on
 
         {mode === 'lobby' ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Content - Left Side */}
-            <div className="lg:col-span-2 space-y-6">
+            {/* Sidebar - Right Side (appears first on mobile) */}
+            <div className="space-y-6 order-1 lg:order-2">
+              {/* Player Name Input */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <label className="block text-sm font-semibold text-gray-900 mb-3">Your Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter your name"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                  onKeyPress={(e) => e.key === 'Enter' && playerName.trim() && setMode('create')}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-3">
+                <button
+                  onClick={() => setMode('create')}
+                  disabled={!connected || !playerName.trim()}
+                  className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-5 h-5" />
+                  Create New Room
+                </button>
+                
+                <button
+                  onClick={() => setMode('join')}
+                  disabled={!connected || !playerName.trim()}
+                  className="w-full px-4 py-3 bg-white hover:bg-gray-50 text-gray-900 font-semibold rounded-lg border-2 border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  <LogIn className="w-5 h-5" />
+                  Join by Room ID
+                </button>
+              </div>
+
+              {/* Connection Status Card */}
+              {connected && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-green-700">
+                    <Wifi className="w-5 h-5" />
+                    <span className="font-medium">Connected to server</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Main Content - Left Side (appears second on mobile) */}
+            <div className="lg:col-span-2 space-y-6 order-2 lg:order-1">
               {/* Stats Cards */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-white rounded-xl p-5 border border-gray-200">
@@ -235,9 +286,9 @@ export default function Lobby({ socket, connected, myPlayerIndex, onJoinRoom, on
                           key={room.roomId}
                           className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
                         >
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-3">
+                              <div className="flex items-center gap-3 mb-3 flex-wrap">
                                 <span className="text-gray-900 font-bold font-mono">
                                   #{room.roomId}
                                 </span>
@@ -285,7 +336,7 @@ export default function Lobby({ socket, connected, myPlayerIndex, onJoinRoom, on
                             <button
                               onClick={() => joinRoomFromList(room.roomId)}
                               disabled={!playerName.trim() || room.playerCount >= room.maxPlayers}
-                              className="ml-4 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              className="sm:ml-4 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors w-full sm:w-auto"
                             >
                               {room.playerCount >= room.maxPlayers ? 'Full' : 'Join'}
                             </button>
@@ -296,53 +347,6 @@ export default function Lobby({ socket, connected, myPlayerIndex, onJoinRoom, on
                   )}
                 </div>
               </div>
-            </div>
-
-            {/* Sidebar - Right Side */}
-            <div className="space-y-6">
-              {/* Player Name Input */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <label className="block text-sm font-semibold text-gray-900 mb-3">Your Name</label>
-                <input
-                  type="text"
-                  placeholder="Enter your name"
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder-gray-400"
-                  onKeyPress={(e) => e.key === 'Enter' && playerName.trim() && setMode('create')}
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-3">
-                <button
-                  onClick={() => setMode('create')}
-                  disabled={!connected || !playerName.trim()}
-                  className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-5 h-5" />
-                  Create New Room
-                </button>
-                
-                <button
-                  onClick={() => setMode('join')}
-                  disabled={!connected || !playerName.trim()}
-                  className="w-full px-4 py-3 bg-white hover:bg-gray-50 text-gray-900 font-semibold rounded-lg border-2 border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  <LogIn className="w-5 h-5" />
-                  Join by Room ID
-                </button>
-              </div>
-
-              {/* Connection Status Card */}
-              {connected && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                  <div className="flex items-center gap-2 text-green-700">
-                    <Wifi className="w-5 h-5" />
-                    <span className="font-medium">Connected to server</span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         ) : mode === 'create' ? (
